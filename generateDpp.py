@@ -15,53 +15,78 @@ DATATYPES = {
 }
 
 
-def createNodes(parent, attr, data, label, description, ref=None, roles=[], tmpType=None):
+def generateNode(attribute, node, value, label="", description=""):
+    tmpLabel = label
+    titleLabel = label
+    descriptionLabel = description
+    if(description == "" or tmpLabel == ""):
+        tmpLabel = generateLabelFromName(attribute)
+        titleLabel = tmpLabel.title()
+        descriptionLabel = tmpLabel.capitalize()
+    return createNodes(parent=node, data=value, attr=attribute,
+                        label=titleLabel, description=descriptionLabel)
+    
+
+def createNodes(parent, attr, data, label, description, ref=None, tmpType=None):
 
     node = createNode(parent=parent, attr=attr, data=data,
-                      label=label, ref=ref, description=label, roles=[])
+                      label=label, ref=ref, description=label)
 
-    if (node["type"]["datatype"] != "object"):
-        return node
+    if (node["type"]["datatype"] == "object"):
+        tmpData = {}
+        for attribute in data:
+            value = data[attribute]
+            tmpData[attribute] = generateNode(attribute, node, value)
 
-    tmpData = {}
-    for attribute in data:
-        value = data[attribute]
-        tmpLabel = generateLabelFromName(attribute)
-        tmpNode = createNodes(parent=node, data=value, attr=attribute,
-                              label=tmpLabel.title(), description=tmpLabel.capitalize())
-        tmpData[attribute] = tmpNode
+        node["data"] = tmpData
+    elif(node["type"]["datatype"] == "array"):
+        tmpData = {}
+        for attribute, value in enumerate(data):
+            stringIndex = str(attribute)
+            tmpData[stringIndex] = generateNode(stringIndex, node, value, stringIndex, stringIndex)
 
-    node["data"] = tmpData
+        node["data"] = tmpData
+
     return node
 
 
-def createNode(parent, attr, data, label, description, ref=None, roles=[], tmpType=None):
+def createNode(parent, attr, data, label, description, ref=None, tmpType=None):
     global BPN
     if (attr == None):
         return None
 
     if (tmpType == None):
         tmpType = {"unit": None, "datatype": "object"}
-
-    if (type(data) not in DATATYPES):
+        
+    if (data!=None and type(data) not in DATATYPES):
         print(f"Invalid data type! in data [{data}]")
         return None
 
-    tmpType["datatype"] = DATATYPES[type(data)]
+    datatype = "undefined"
+    if(data != None):
+        datatype = DATATYPES[type(data)]
+
+    tmpType["datatype"] = datatype
+
+    if ref != None:
+        reference = ref
+    elif parent["ref"] == "/":
+        reference = "/" + attr
+    else:
+        reference =  "/".join([parent["ref"], attr])
 
     return {
-        "key": attr,
+        "id": attr,
         "label": label,
         "description": description,
         "type": tmpType,
-        "ref": ref if ref != None else str(os.path.join("/", parent["ref"], attr)),
+        "ref": reference,
         "audit": {
             "created": op.timestamp(),
             "createdBy": BPN,
             "updated": op.timestamp(),
             "updatedBy": BPN,
         },
-        "roles": roles,
         "data": data
     }
 
@@ -72,7 +97,7 @@ def generateDataModel(filepath):
     initialData = op.readJsonFile(filepath)
 
     dataModel = createNodes(parent={}, attr="passport", data=initialData, label="Digital Product Passport",
-                            description="Root passport node", ref="/", roles=["oem", "recycler", "dismantler"])
+                            description="Root passport node", ref="/")
 
     op.toJsonFile(sourceObject=dataModel,
                   jsonFilePath="output/jsonData-"+str(op.timestamp())+".json")
@@ -84,7 +109,7 @@ def generateLabelFromName(name):
 
 if __name__ == '__main__':
     FILE_PATH = "../dataModel.json"
-    BPN = "BPN_21561231_892151"
+    BPN = "user1"
     paramsLen = len(sys.argv)
     if paramsLen > 1:
         FILE_PATH = sys.argv[1]
